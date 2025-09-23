@@ -105,7 +105,10 @@
 
         <!-- View/Vote Poll Section -->
         <div id="poll-view-section" class="hidden space-y-6">
-            <h1 id="poll-question-display" class="text-3xl font-bold text-center text-gray-800"></h1>
+            <h1 class="text-3xl font-bold text-center text-gray-800 mb-2">
+                <span id="poll-question-display"></span>
+                <span id="poll-status-indicator" class="text-sm font-semibold ml-2"></span>
+            </h1>
             <div id="poll-options-display" class="space-y-4 mt-6">
                 <!-- Poll options will be dynamically added here -->
             </div>
@@ -118,7 +121,7 @@
             
             <!-- Poll management buttons for the owner -->
             <div id="owner-buttons" class="hidden mt-8 flex justify-center space-x-4">
-                <button id="end-poll-btn" class="button bg-yellow-500 hover:bg-yellow-600 text-white">End Poll</button>
+                <button id="toggle-poll-btn" class="button bg-yellow-500 hover:bg-yellow-600 text-white">End Poll</button>
                 <button id="delete-poll-btn" class="button bg-red-500 hover:bg-red-600 text-white">Delete Poll</button>
             </div>
 
@@ -168,12 +171,13 @@
         const pollLinkSection = document.getElementById('poll-link-section');
         const pollLink = document.getElementById('poll-link');
         const pollQuestionDisplay = document.getElementById('poll-question-display');
+        const pollStatusIndicator = document.getElementById('poll-status-indicator');
         const pollOptionsDisplay = document.getElementById('poll-options-display');
         const pollResultsDisplay = document.getElementById('poll-results-display');
         const resultsList = document.getElementById('results-list');
         const errorMessage = document.getElementById('error-message');
         const ownerButtons = document.getElementById('owner-buttons');
-        const endPollBtn = document.getElementById('end-poll-btn');
+        const togglePollBtn = document.getElementById('toggle-poll-btn');
         const deletePollBtn = document.getElementById('delete-poll-btn');
         
         // State for the current poll ID
@@ -183,12 +187,10 @@
         const handleRouting = () => {
             const path = window.location.pathname;
             if (path.startsWith('/poll/')) {
-                // Get the poll ID from the end of the URL
                 const parts = path.split('/');
                 currentPollId = parts[parts.length - 1];
                 
                 if (currentPollId) {
-                    // Show poll view section
                     authCreateSection.classList.add('hidden');
                     pollViewSection.classList.remove('hidden');
                     fetchPollData(currentPollId);
@@ -198,7 +200,6 @@
                     pollResultsDisplay.classList.add('hidden');
                 }
             } else {
-                // Show poll creation section
                 authCreateSection.classList.remove('hidden');
                 pollViewSection.classList.add('hidden');
             }
@@ -217,7 +218,6 @@
                 signoutBtn.classList.add('hidden');
                 pollForm.classList.add('hidden');
             }
-            // Check for owner buttons visibility when auth state changes
             if (currentPollId) {
                 fetchPollData(currentPollId);
             }
@@ -290,6 +290,7 @@
                 question,
                 creatorUid: user.uid,
                 isEnded: false,
+                timestamp: Date.now(),
                 options: options.map(option => ({ text: option, votes: 0 }))
             };
 
@@ -314,13 +315,20 @@
         });
 
         // Event listeners for owner-only buttons
-        endPollBtn.addEventListener('click', async () => {
+        togglePollBtn.addEventListener('click', async () => {
             if (!currentPollId) return;
+            const pollRef = ref(db, `polls/${currentPollId}`);
             try {
-                await update(ref(db, `polls/${currentPollId}`), { isEnded: true });
+                // Fetch the current state to toggle it
+                onValue(pollRef, async (snapshot) => {
+                    const poll = snapshot.val();
+                    if (poll) {
+                        await update(pollRef, { isEnded: !poll.isEnded });
+                    }
+                }, { onlyOnce: true });
             } catch (error) {
-                console.error("Failed to end poll:", error);
-                errorMessage.textContent = 'Failed to end poll. Please try again.';
+                console.error("Failed to toggle poll status:", error);
+                errorMessage.textContent = 'Failed to change poll status. Please try again.';
             }
         });
         
@@ -350,20 +358,51 @@
                     const user = auth.currentUser;
                     if (user && user.uid === poll.creatorUid) {
                         ownerButtons.classList.remove('hidden');
+                        updateOwnerButtons(poll);
                     } else {
                         ownerButtons.classList.add('hidden');
                     }
 
+                    updatePollStatusDisplay(poll);
                     renderPollOptions(poll);
                 } else {
                     pollQuestionDisplay.textContent = 'Poll not found.';
                     pollOptionsDisplay.innerHTML = '';
                     pollResultsDisplay.classList.add('hidden');
-                    ownerButtons.classList.add('hidden'); // Hide buttons if poll is gone
+                    ownerButtons.classList.add('hidden');
                 }
             }, {
                 onlyOnce: false
             });
+        };
+
+        const updatePollStatusDisplay = (poll) => {
+            const now = Date.now();
+            const fiveMinutes = 5 * 60 * 1000;
+            pollStatusIndicator.className = 'text-sm font-semibold ml-2'; // Reset classes
+
+            if (poll.isEnded) {
+                pollStatusIndicator.textContent = 'Poll Ended';
+                pollStatusIndicator.classList.add('text-red-500');
+            } else if (now - poll.timestamp < fiveMinutes) {
+                pollStatusIndicator.textContent = 'Poll Ongoing • New';
+                pollStatusIndicator.classList.add('text-blue-500');
+            } else {
+                pollStatusIndicator.textContent = 'Poll Ongoing';
+                pollStatusIndicator.classList.add('text-green-500');
+            }
+        };
+
+        const updateOwnerButtons = (poll) => {
+            if (poll.isEnded) {
+                togglePollBtn.textContent = 'Start Poll';
+                togglePollBtn.classList.remove('bg-yellow-500', 'hover:bg-yellow-600');
+                togglePollBtn.classList.add('bg-green-500', 'hover:bg-green-600');
+            } else {
+                togglePollBtn.textContent = 'End Poll';
+                togglePollBtn.classList.remove('bg-green-500', 'hover:bg-green-600');
+                togglePollBtn.classList.add('bg-yellow-500', 'hover:bg-yellow-600');
+            }
         };
 
         // Render poll options and results
@@ -373,7 +412,6 @@
             const totalVotes = poll.options.reduce((sum, option) => sum + option.votes, 0);
 
             poll.options.forEach((option, index) => {
-                // Vote button
                 const optionButton = document.createElement('button');
                 optionButton.textContent = option.text;
                 optionButton.className = 'vote-option button button-secondary w-full text-left';
@@ -388,7 +426,6 @@
                 }
                 pollOptionsDisplay.appendChild(optionButton);
 
-                // Result bar
                 const resultBar = document.createElement('div');
                 const percentage = totalVotes > 0 ? (option.votes / totalVotes * 100) : 0;
                 resultBar.innerHTML = `
@@ -403,7 +440,6 @@
                 resultsList.appendChild(resultBar);
             });
             
-            // Show results after an initial vote or if poll has ended
             if (totalVotes > 0 || poll.isEnded) {
                 pollResultsDisplay.classList.remove('hidden');
             } else {
@@ -420,10 +456,7 @@
             });
         };
 
-        // Initialize routing on page load
         window.onload = handleRouting;
-
-        // Listen for history changes (back/forward)
         window.addEventListener('popstate', handleRouting);
     </script>
 </body>
