@@ -177,7 +177,8 @@
             if (path.startsWith('/poll/')) {
                 const parts = path.split('/');
                 const urlPart = parts[parts.length - 1];
-                const pollId = urlPart.split('-').pop(); // Get the ID from the end
+                const lastHyphenIndex = urlPart.lastIndexOf('-');
+                const pollId = lastHyphenIndex !== -1 ? urlPart.substring(lastHyphenIndex + 1) : null;
                 if (pollId) {
                     // Show poll view section
                     authCreateSection.classList.add('hidden');
