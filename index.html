@@ -125,10 +125,15 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
-        import { getDatabase, ref, push, onValue, runTransaction, set } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
+        // Using a recent stable version of the Firebase modular SDKs
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+        import { getDatabase, ref, push, onValue, runTransaction, set } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
 
+        // IMPORTANT: In a production app, set up security rules in your Firebase project.
+        // The current rules allow public read/write, which is insecure.
+        // Learn more at: https://firebase.google.com/docs/database/security
+        
         // Firebase configuration from user's request
         const firebaseConfig = {
             apiKey: "AIzaSyD4Nvk8ufVAw_0EB2lZTdAkZKSWSnWbKtc",
@@ -162,30 +167,14 @@
         const resultsList = document.getElementById('results-list');
         const errorMessage = document.getElementById('error-message');
 
-        // Helper function to create a URL-friendly slug
-        const createSlug = (text) => {
-            return text.toLowerCase()
-                       .trim()
-                       .replace(/[^\w\s-]/g, '')
-                       .replace(/[\s_-]+/g, '-')
-                       .replace(/^-+|-+$/g, '');
-        };
-
-        // Handle URL-based routing
+        // Handle URL-based routing to show the create or view section
         const handleRouting = () => {
             const path = window.location.pathname;
             if (path.startsWith('/poll/')) {
+                // Get the poll ID from the end of the URL
                 const parts = path.split('/');
-                const urlPart = parts[parts.length - 1];
-                const lastHyphenIndex = urlPart.lastIndexOf('-');
+                const pollId = parts[parts.length - 1];
                 
-                let pollId = null;
-                if (lastHyphenIndex !== -1) {
-                    pollId = urlPart.substring(lastHyphenIndex + 1);
-                }
-                
-                console.log("Extracted Poll ID:", pollId);
-
                 if (pollId) {
                     // Show poll view section
                     authCreateSection.classList.add('hidden');
@@ -232,8 +221,13 @@
         });
 
         signoutBtn.addEventListener('click', async () => {
-            await signOut(auth);
-            errorMessage.textContent = '';
+            try {
+                await signOut(auth);
+                errorMessage.textContent = '';
+            } catch (error) {
+                console.error("Sign out error:", error);
+                errorMessage.textContent = 'Failed to sign out. Please try again.';
+            }
         });
 
         addOptionBtn.addEventListener('click', () => {
@@ -289,8 +283,9 @@
                 const pollsRef = ref(db, 'polls');
                 const newPollRef = push(pollsRef);
                 const pollId = newPollRef.key;
-                const pollSlug = createSlug(question);
-                const pollUrl = `${window.location.origin}/poll/${pollSlug}-${pollId}`;
+                
+                // The URL now only uses the poll ID, not a slug
+                const pollUrl = `${window.location.origin}/poll/${pollId}`;
 
                 await set(newPollRef, pollData);
 
@@ -319,8 +314,6 @@
                     pollQuestionDisplay.textContent = poll.question;
                     renderPollOptions(poll);
                 } else {
-                    // A 'null' snapshot can be caused by missing data or, more commonly,
-                    // by Firebase security rules that deny read access.
                     pollQuestionDisplay.textContent = 'Poll not found.';
                     pollOptionsDisplay.innerHTML = '';
                     pollResultsDisplay.classList.add('hidden');
