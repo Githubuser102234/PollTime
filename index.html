@@ -206,13 +206,7 @@
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
         import { getDatabase, ref, push, onValue, runTransaction, set, update, remove } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
-        import { getAI, getGenerativeModel, GoogleAIBackend } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-ai.js";
 
-        // IMPORTANT: In a production app, set up security rules in your Firebase project.
-        // The current rules allow public read/write, which is insecure.
-        // Learn more at: https://firebase.google.com/docs/database/security
-        
-        // Firebase configuration from user's request
         const firebaseConfig = {
             apiKey: "AIzaSyD4Nvk8ufVAw_0EB2lZTdAkZKSWSnWbKtc",
             authDomain: "polltime-6ec9c.firebaseapp.com",
@@ -223,16 +217,10 @@
             measurementId: "G-V49J0KF4FZ"
         };
     
-        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getDatabase(app);
-        
-        // Initialize Firebase AI SDK
-        const ai = getAI(app, { backend: new GoogleAIBackend() });
-        const model = getGenerativeModel(ai, { model: "gemini-2.5-flash" });
 
-        // UI elements
         const authCreateSection = document.getElementById('auth-create-section');
         const pollViewSection = document.getElementById('poll-view-section');
         const authStatus = document.getElementById('auth-status');
@@ -254,7 +242,6 @@
         const togglePollBtn = document.getElementById('toggle-poll-btn');
         const deletePollBtn = document.getElementById('delete-poll-btn');
         
-        // AI Modal elements
         const aiPromptModal = document.getElementById('ai-prompt-modal');
         const aiTopicInput = document.getElementById('ai-topic-input');
         const cancelAiBtn = document.getElementById('cancel-ai-btn');
@@ -264,7 +251,6 @@
 
         let currentPollId = null;
 
-        // Handle URL-based routing
         const handleRouting = () => {
             const path = window.location.pathname;
             if (path.startsWith('/poll/')) {
@@ -286,7 +272,6 @@
             }
         };
 
-        // Listen for auth state changes
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 authStatus.textContent = `Signed in as ${user.displayName}. You can now create a poll.`;
@@ -304,7 +289,6 @@
             }
         });
 
-        // Event listeners
         googleSigninBtn.addEventListener('click', async () => {
             try {
                 const provider = new GoogleAuthProvider();
@@ -349,7 +333,6 @@
             optionsContainer.appendChild(optionGroup);
         });
         
-        // AI Poll Generation
         aiPollBtn.addEventListener('click', () => {
             aiPromptModal.style.display = 'flex';
             aiTopicInput.value = '';
@@ -367,29 +350,52 @@
                 return;
             }
             
-            // Show loading state
             generateText.classList.add('hidden');
             loadingSpinner.classList.remove('hidden');
             generateAiBtn.disabled = true;
 
             const prompt = `Generate a poll question and at least 4 options about the topic: "${topic}". Format the output as a JSON object with two keys: "question" (string) and "options" (array of strings). Do not include any other text or formatting outside of the JSON object.`;
             
-            try {
-                const result = await model.generateContent(prompt);
-                const response = result.response;
-                const text = response.text();
-                const pollData = JSON.parse(text);
+            const apiKey = "";
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
-                // Populate form fields
+            const payload = {
+                contents: [{ parts: [{ text: prompt }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            "question": { "type": "STRING" },
+                            "options": {
+                                "type": "ARRAY",
+                                "items": { "type": "STRING" }
+                            }
+                        }
+                    }
+                }
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                const json = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!json) {
+                    throw new Error('No JSON response from API.');
+                }
+                const pollData = JSON.parse(json);
+
                 document.getElementById('poll-question').value = pollData.question;
                 
-                // Remove all existing option fields except the first two
                 const options = document.querySelectorAll('.option-group');
                 for (let i = options.length - 1; i >= 2; i--) {
                     options[i].remove();
                 }
 
-                // Populate and add new options
                 document.querySelector('.poll-option').value = pollData.options[0] || '';
                 document.querySelectorAll('.poll-option')[1].value = pollData.options[1] || '';
 
@@ -408,7 +414,6 @@
                 console.error("AI Generation error:", error);
                 errorMessage.textContent = 'Failed to generate poll with AI. Please try a different topic or try again.';
             } finally {
-                // Hide loading state
                 generateText.classList.remove('hidden');
                 loadingSpinner.classList.add('hidden');
                 generateAiBtn.disabled = false;
@@ -462,7 +467,6 @@
             }
         });
 
-        // Event listeners for owner-only buttons
         togglePollBtn.addEventListener('click', async () => {
             if (!currentPollId) return;
             const pollRef = ref(db, `polls/${currentPollId}`);
@@ -490,7 +494,6 @@
             }
         });
 
-        // Fetch and display poll data
         const fetchPollData = (pollId) => {
             const pollRef = ref(db, `polls/${pollId}`);
             
@@ -551,7 +554,6 @@
             }
         };
 
-        // Render poll options and results
         const renderPollOptions = (poll) => {
             pollOptionsDisplay.innerHTML = '';
             resultsList.innerHTML = '';
@@ -593,7 +595,6 @@
             }
         };
 
-        // Handle voting
         const vote = (pollId, optionIndex) => {
             const pollOptionVotesRef = ref(db, `polls/${pollId}/options/${optionIndex}/votes`);
             
