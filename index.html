@@ -48,6 +48,22 @@
         .vote-option:hover {
             background-color: #e5e7eb;
         }
+        .option-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .delete-btn {
+            background-color: #fca5a5;
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .delete-btn:hover {
+            background-color: #ef4444;
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
@@ -68,8 +84,12 @@
                 
                 <h2 class="text-2xl font-semibold text-gray-800">Options</h2>
                 <div id="options-container" class="space-y-4">
-                    <input type="text" placeholder="Option 1" class="form-input poll-option" required>
-                    <input type="text" placeholder="Option 2" class="form-input poll-option" required>
+                    <div class="option-group">
+                        <input type="text" placeholder="Option 1" class="form-input poll-option" required>
+                    </div>
+                    <div class="option-group">
+                        <input type="text" placeholder="Option 2" class="form-input poll-option" required>
+                    </div>
                 </div>
                 <div class="flex justify-between items-center">
                     <button type="button" id="add-option" class="text-indigo-600 hover:text-indigo-800 font-medium">+ Add another option</button>
@@ -107,14 +127,14 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
         import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
-        import { getDatabase, ref, push, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
+        import { getDatabase, ref, push, onValue, runTransaction, set } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
 
         // Firebase configuration from user's request
         const firebaseConfig = {
             apiKey: "AIzaSyD4Nvk8ufVAw_0EB2lZTdAkZKSWSnWbKtc",
             authDomain: "polltime-6ec9c.firebaseapp.com",
             projectId: "polltime-6ec9c",
-            storageBucket: "polltime-6ec9c.firebasestorage.app",
+            storageBucket: "polltime-6ec9c.firebaseapp.com",
             messagingSenderId: "73413033282",
             appId: "1:73413033282:web:27934aa47c300f02871cdb",
             measurementId: "G-V49J0KF4FZ"
@@ -156,7 +176,8 @@
             const path = window.location.pathname;
             if (path.startsWith('/poll/')) {
                 const parts = path.split('/');
-                const pollId = parts[parts.length - 1];
+                const urlPart = parts[parts.length - 1];
+                const pollId = urlPart.split('-').pop(); // Get the ID from the end
                 if (pollId) {
                     // Show poll view section
                     authCreateSection.classList.add('hidden');
@@ -204,12 +225,27 @@
         });
 
         addOptionBtn.addEventListener('click', () => {
+            const optionGroup = document.createElement('div');
+            optionGroup.className = 'option-group';
+
             const newOption = document.createElement('input');
             newOption.type = 'text';
             newOption.placeholder = `Option ${optionsContainer.children.length + 1}`;
             newOption.className = 'form-input poll-option';
             newOption.required = true;
-            optionsContainer.appendChild(newOption);
+            
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'x';
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'delete-btn';
+            deleteBtn.title = 'Remove this option';
+            deleteBtn.onclick = () => {
+                optionGroup.remove();
+            };
+
+            optionGroup.appendChild(newOption);
+            optionGroup.appendChild(deleteBtn);
+            optionsContainer.appendChild(optionGroup);
         });
 
         pollForm.addEventListener('submit', async (e) => {
@@ -239,7 +275,7 @@
 
             try {
                 const pollsRef = ref(db, 'polls');
-                const newPollRef = await push(pollsRef);
+                const newPollRef = push(pollsRef);
                 const pollId = newPollRef.key;
                 const pollSlug = createSlug(question);
                 const pollUrl = `${window.location.origin}/poll/${pollSlug}-${pollId}`;
@@ -259,12 +295,12 @@
 
         // Fetch and display poll data
         const fetchPollData = (pollId) => {
-            const pollsRef = ref(db, 'polls');
             const pollRef = ref(db, `polls/${pollId}`);
             
             onValue(pollRef, (snapshot) => {
                 const poll = snapshot.val();
                 if (poll) {
+                    poll.key = snapshot.key; // Add the key for voting
                     pollQuestionDisplay.textContent = poll.question;
                     renderPollOptions(poll);
                 } else {
@@ -318,9 +354,9 @@
 
         // Handle voting
         const vote = (pollId, optionIndex) => {
-            const pollOptionsRef = ref(db, `polls/${pollId}/options/${optionIndex}/votes`);
+            const pollOptionVotesRef = ref(db, `polls/${pollId}/options/${optionIndex}/votes`);
             
-            runTransaction(pollOptionsRef, (currentVotes) => {
+            runTransaction(pollOptionVotesRef, (currentVotes) => {
                 // Atomically increment the vote count
                 return (currentVotes || 0) + 1;
             });
@@ -331,7 +367,6 @@
 
         // Listen for history changes (back/forward)
         window.addEventListener('popstate', handleRouting);
-
     </script>
 </body>
 </html>
