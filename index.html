@@ -307,18 +307,20 @@
 
         // Fetch and display poll data
         const fetchPollData = (pollId) => {
+            console.log("Attempting to fetch poll with ID:", pollId);
             const pollRef = ref(db, `polls/${pollId}`);
             
             onValue(pollRef, (snapshot) => {
                 const poll = snapshot.val();
-                console.log("Fetching poll data for ID:", pollId);
-                console.log("Snapshot value:", poll);
+                console.log("Received snapshot value:", poll);
                 
                 if (poll) {
                     poll.key = snapshot.key; // Add the key for voting
                     pollQuestionDisplay.textContent = poll.question;
                     renderPollOptions(poll);
                 } else {
+                    // A 'null' snapshot can be caused by missing data or, more commonly,
+                    // by Firebase security rules that deny read access.
                     pollQuestionDisplay.textContent = 'Poll not found.';
                     pollOptionsDisplay.innerHTML = '';
                     pollResultsDisplay.classList.add('hidden');
