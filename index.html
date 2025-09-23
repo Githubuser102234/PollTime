@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime Polls</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 16px;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        .button {
+            padding: 12px 24px;
+            font-weight: 600;
+            border-radius: 8px;
+            transition: background-color 0.2s;
+        }
+        .button-primary {
+            background-color: #4f46e5;
+            color: white;
+            border: none;
+        }
+        .button-primary:hover {
+            background-color: #4338ca;
+        }
+        .button-secondary {
+            background-color: #e5e7eb;
+            color: #4b5563;
+            border: 1px solid #d1d5db;
+        }
+        .button-secondary:hover {
+            background-color: #d1d5db;
+        }
+        .vote-option:hover {
+            background-color: #e5e7eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <div id="app" class="container bg-white p-8 rounded-xl shadow-lg w-full">
+        <!-- Auth/Create Poll Section -->
+        <div id="auth-create-section" class="space-y-6">
+            <h1 class="text-4xl font-bold text-center text-gray-800">Create a Poll</h1>
+            <p id="auth-status" class="text-center text-sm text-gray-600">Please sign in to create a poll.</p>
+            <div id="auth-buttons" class="flex justify-center">
+                <button id="google-signin" class="button button-primary">Sign in with Google</button>
+                <button id="signout" class="hidden button button-secondary ml-4">Sign out</button>
+            </div>
+
+            <form id="poll-form" class="mt-8 hidden space-y-4">
+                <h2 class="text-2xl font-semibold text-gray-800">Your Question</h2>
+                <input id="poll-question" type="text" placeholder="e.g., What's your favorite color?" class="form-input" required>
+                
+                <h2 class="text-2xl font-semibold text-gray-800">Options</h2>
+                <div id="options-container" class="space-y-4">
+                    <input type="text" placeholder="Option 1" class="form-input poll-option" required>
+                    <input type="text" placeholder="Option 2" class="form-input poll-option" required>
+                </div>
+                <div class="flex justify-between items-center">
+                    <button type="button" id="add-option" class="text-indigo-600 hover:text-indigo-800 font-medium">+ Add another option</button>
+                    <button type="submit" class="button button-primary">Create Poll</button>
+                </div>
+            </form>
+
+            <div id="poll-link-section" class="hidden mt-8 text-center bg-gray-50 p-6 rounded-lg border border-dashed border-gray-200">
+                <p class="text-lg font-medium text-gray-700">Your poll has been created!</p>
+                <a id="poll-link" class="text-indigo-600 hover:underline break-words mt-2 block" target="_blank" href=""></a>
+            </div>
+        </div>
+
+        <!-- View/Vote Poll Section -->
+        <div id="poll-view-section" class="hidden space-y-6">
+            <h1 id="poll-question-display" class="text-3xl font-bold text-center text-gray-800"></h1>
+            <div id="poll-options-display" class="space-y-4 mt-6">
+                <!-- Poll options will be dynamically added here -->
+            </div>
+            <div id="poll-results-display" class="hidden mt-8">
+                <h2 class="text-2xl font-semibold text-gray-800 mb-4">Results</h2>
+                <div id="results-list" class="space-y-2">
+                    <!-- Poll results will be dynamically added here -->
+                </div>
+            </div>
+            <div class="mt-8 text-center">
+                <a href="/" class="text-indigo-600 hover:underline">Create your own poll</a>
+            </div>
+        </div>
+
+        <p id="error-message" class="text-center text-red-500 mt-4"></p>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+        import { getDatabase, ref, push, onValue, runTransaction } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
+
+        // Firebase configuration from user's request
+        const firebaseConfig = {
+            apiKey: "AIzaSyD4Nvk8ufVAw_0EB2lZTdAkZKSWSnWbKtc",
+            authDomain: "polltime-6ec9c.firebaseapp.com",
+            projectId: "polltime-6ec9c",
+            storageBucket: "polltime-6ec9c.firebasestorage.app",
+            messagingSenderId: "73413033282",
+            appId: "1:73413033282:web:27934aa47c300f02871cdb",
+            measurementId: "G-V49J0KF4FZ"
+        };
+    
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+
+        // UI elements
+        const authCreateSection = document.getElementById('auth-create-section');
+        const pollViewSection = document.getElementById('poll-view-section');
+        const authStatus = document.getElementById('auth-status');
+        const googleSigninBtn = document.getElementById('google-signin');
+        const signoutBtn = document.getElementById('signout');
+        const pollForm = document.getElementById('poll-form');
+        const optionsContainer = document.getElementById('options-container');
+        const addOptionBtn = document.getElementById('add-option');
+        const pollLinkSection = document.getElementById('poll-link-section');
+        const pollLink = document.getElementById('poll-link');
+        const pollQuestionDisplay = document.getElementById('poll-question-display');
+        const pollOptionsDisplay = document.getElementById('poll-options-display');
+        const pollResultsDisplay = document.getElementById('poll-results-display');
+        const resultsList = document.getElementById('results-list');
+        const errorMessage = document.getElementById('error-message');
+
+        // Helper function to create a URL-friendly slug
+        const createSlug = (text) => {
+            return text.toLowerCase()
+                       .trim()
+                       .replace(/[^\w\s-]/g, '')
+                       .replace(/[\s_-]+/g, '-')
+                       .replace(/^-+|-+$/g, '');
+        };
+
+        // Handle URL-based routing
+        const handleRouting = () => {
+            const path = window.location.pathname;
+            if (path.startsWith('/poll/')) {
+                const parts = path.split('/');
+                const pollId = parts[parts.length - 1];
+                if (pollId) {
+                    // Show poll view section
+                    authCreateSection.classList.add('hidden');
+                    pollViewSection.classList.remove('hidden');
+                    fetchPollData(pollId);
+                }
+            } else {
+                // Show poll creation section
+                authCreateSection.classList.remove('hidden');
+                pollViewSection.classList.add('hidden');
+            }
+        };
+
+        // Listen for auth state changes
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                // User is signed in
+                authStatus.textContent = `Signed in as ${user.displayName}. You can now create a poll.`;
+                googleSigninBtn.classList.add('hidden');
+                signoutBtn.classList.remove('hidden');
+                pollForm.classList.remove('hidden');
+            } else {
+                // User is signed out
+                authStatus.textContent = 'Please sign in to create a poll.';
+                googleSigninBtn.classList.remove('hidden');
+                signoutBtn.classList.add('hidden');
+                pollForm.classList.add('hidden');
+            }
+        });
+
+        // Event listeners
+        googleSigninBtn.addEventListener('click', async () => {
+            try {
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(auth, provider);
+            } catch (error) {
+                console.error("Authentication error:", error);
+                errorMessage.textContent = 'Failed to sign in. Please try again.';
+            }
+        });
+
+        signoutBtn.addEventListener('click', async () => {
+            await signOut(auth);
+            errorMessage.textContent = '';
+        });
+
+        addOptionBtn.addEventListener('click', () => {
+            const newOption = document.createElement('input');
+            newOption.type = 'text';
+            newOption.placeholder = `Option ${optionsContainer.children.length + 1}`;
+            newOption.className = 'form-input poll-option';
+            newOption.required = true;
+            optionsContainer.appendChild(newOption);
+        });
+
+        pollForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const user = auth.currentUser;
+            if (!user) {
+                errorMessage.textContent = 'You must be signed in to create a poll.';
+                return;
+            }
+
+            const question = document.getElementById('poll-question').value;
+            const options = Array.from(document.querySelectorAll('.poll-option'))
+                                 .map(input => input.value.trim())
+                                 .filter(val => val !== '');
+
+            if (options.length < 2) {
+                errorMessage.textContent = 'Please provide at least two options.';
+                return;
+            }
+
+            // Create a poll object with initial vote counts
+            const pollData = {
+                question,
+                creatorUid: user.uid,
+                options: options.map(option => ({ text: option, votes: 0 }))
+            };
+
+            try {
+                const pollsRef = ref(db, 'polls');
+                const newPollRef = await push(pollsRef);
+                const pollId = newPollRef.key;
+                const pollSlug = createSlug(question);
+                const pollUrl = `${window.location.origin}/poll/${pollSlug}-${pollId}`;
+
+                await set(newPollRef, pollData);
+
+                pollForm.classList.add('hidden');
+                pollLinkSection.classList.remove('hidden');
+                pollLink.textContent = pollUrl;
+                pollLink.href = pollUrl;
+                errorMessage.textContent = '';
+            } catch (error) {
+                console.error("Failed to create poll:", error);
+                errorMessage.textContent = 'Failed to create poll. Please try again.';
+            }
+        });
+
+        // Fetch and display poll data
+        const fetchPollData = (pollId) => {
+            const pollsRef = ref(db, 'polls');
+            const pollRef = ref(db, `polls/${pollId}`);
+            
+            onValue(pollRef, (snapshot) => {
+                const poll = snapshot.val();
+                if (poll) {
+                    pollQuestionDisplay.textContent = poll.question;
+                    renderPollOptions(poll);
+                } else {
+                    pollQuestionDisplay.textContent = 'Poll not found.';
+                    pollOptionsDisplay.innerHTML = '';
+                    pollResultsDisplay.classList.add('hidden');
+                }
+            }, {
+                onlyOnce: false // Listen for real-time changes
+            });
+        };
+
+        // Render poll options and results
+        const renderPollOptions = (poll) => {
+            pollOptionsDisplay.innerHTML = '';
+            resultsList.innerHTML = '';
+            const totalVotes = poll.options.reduce((sum, option) => sum + option.votes, 0);
+
+            poll.options.forEach((option, index) => {
+                // Vote button
+                const optionButton = document.createElement('button');
+                optionButton.textContent = option.text;
+                optionButton.className = 'vote-option button button-secondary w-full text-left';
+                optionButton.addEventListener('click', () => {
+                    vote(poll.key, index);
+                });
+                pollOptionsDisplay.appendChild(optionButton);
+
+                // Result bar
+                const resultBar = document.createElement('div');
+                const percentage = totalVotes > 0 ? (option.votes / totalVotes * 100) : 0;
+                resultBar.innerHTML = `
+                    <div class="flex justify-between items-center text-gray-700">
+                        <span>${option.text}</span>
+                        <span>${option.votes} votes (${percentage.toFixed(1)}%)</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 mt-1">
+                        <div class="bg-indigo-600 h-2.5 rounded-full" style="width: ${percentage}%;"></div>
+                    </div>
+                `;
+                resultsList.appendChild(resultBar);
+            });
+            
+            // Show results after an initial vote
+            if (totalVotes > 0) {
+                pollResultsDisplay.classList.remove('hidden');
+            } else {
+                pollResultsDisplay.classList.add('hidden');
+            }
+        };
+
+        // Handle voting
+        const vote = (pollId, optionIndex) => {
+            const pollOptionsRef = ref(db, `polls/${pollId}/options/${optionIndex}/votes`);
+            
+            runTransaction(pollOptionsRef, (currentVotes) => {
+                // Atomically increment the vote count
+                return (currentVotes || 0) + 1;
+            });
+        };
+
+        // Initialize routing on page load
+        window.onload = handleRouting;
+
+        // Listen for history changes (back/forward)
+        window.addEventListener('popstate', handleRouting);
+
+    </script>
+</body>
+</html>
+
