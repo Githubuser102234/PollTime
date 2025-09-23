@@ -115,6 +115,13 @@
                     <!-- Poll results will be dynamically added here -->
                 </div>
             </div>
+            
+            <!-- Poll management buttons for the owner -->
+            <div id="owner-buttons" class="hidden mt-8 flex justify-center space-x-4">
+                <button id="end-poll-btn" class="button bg-yellow-500 hover:bg-yellow-600 text-white">End Poll</button>
+                <button id="delete-poll-btn" class="button bg-red-500 hover:bg-red-600 text-white">Delete Poll</button>
+            </div>
+
             <div class="mt-8 text-center">
                 <a href="/" class="text-indigo-600 hover:underline">Create your own poll</a>
             </div>
@@ -125,10 +132,9 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        // Using a recent stable version of the Firebase modular SDKs
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-        import { getDatabase, ref, push, onValue, runTransaction, set } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
+        import { getDatabase, ref, push, onValue, runTransaction, set, update, remove } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
 
         // IMPORTANT: In a production app, set up security rules in your Firebase project.
         // The current rules allow public read/write, which is insecure.
@@ -166,6 +172,12 @@
         const pollResultsDisplay = document.getElementById('poll-results-display');
         const resultsList = document.getElementById('results-list');
         const errorMessage = document.getElementById('error-message');
+        const ownerButtons = document.getElementById('owner-buttons');
+        const endPollBtn = document.getElementById('end-poll-btn');
+        const deletePollBtn = document.getElementById('delete-poll-btn');
+        
+        // State for the current poll ID
+        let currentPollId = null;
 
         // Handle URL-based routing to show the create or view section
         const handleRouting = () => {
@@ -173,13 +185,13 @@
             if (path.startsWith('/poll/')) {
                 // Get the poll ID from the end of the URL
                 const parts = path.split('/');
-                const pollId = parts[parts.length - 1];
+                currentPollId = parts[parts.length - 1];
                 
-                if (pollId) {
+                if (currentPollId) {
                     // Show poll view section
                     authCreateSection.classList.add('hidden');
                     pollViewSection.classList.remove('hidden');
-                    fetchPollData(pollId);
+                    fetchPollData(currentPollId);
                 } else {
                     pollQuestionDisplay.textContent = 'Poll not found. Invalid URL.';
                     pollOptionsDisplay.innerHTML = '';
@@ -195,17 +207,19 @@
         // Listen for auth state changes
         onAuthStateChanged(auth, (user) => {
             if (user) {
-                // User is signed in
                 authStatus.textContent = `Signed in as ${user.displayName}. You can now create a poll.`;
                 googleSigninBtn.classList.add('hidden');
                 signoutBtn.classList.remove('hidden');
                 pollForm.classList.remove('hidden');
             } else {
-                // User is signed out
                 authStatus.textContent = 'Please sign in to create a poll.';
                 googleSigninBtn.classList.remove('hidden');
                 signoutBtn.classList.add('hidden');
                 pollForm.classList.add('hidden');
+            }
+            // Check for owner buttons visibility when auth state changes
+            if (currentPollId) {
+                fetchPollData(currentPollId);
             }
         });
 
@@ -272,10 +286,10 @@
                 return;
             }
 
-            // Create a poll object with initial vote counts
             const pollData = {
                 question,
                 creatorUid: user.uid,
+                isEnded: false,
                 options: options.map(option => ({ text: option, votes: 0 }))
             };
 
@@ -284,7 +298,6 @@
                 const newPollRef = push(pollsRef);
                 const pollId = newPollRef.key;
                 
-                // The URL now only uses the poll ID, not a slug
                 const pollUrl = `${window.location.origin}/poll/${pollId}`;
 
                 await set(newPollRef, pollData);
@@ -300,26 +313,56 @@
             }
         });
 
+        // Event listeners for owner-only buttons
+        endPollBtn.addEventListener('click', async () => {
+            if (!currentPollId) return;
+            try {
+                await update(ref(db, `polls/${currentPollId}`), { isEnded: true });
+            } catch (error) {
+                console.error("Failed to end poll:", error);
+                errorMessage.textContent = 'Failed to end poll. Please try again.';
+            }
+        });
+        
+        deletePollBtn.addEventListener('click', async () => {
+            if (!currentPollId) return;
+            try {
+                await remove(ref(db, `polls/${currentPollId}`));
+                window.location.href = '/'; // Redirect after deletion
+            } catch (error) {
+                console.error("Failed to delete poll:", error);
+                errorMessage.textContent = 'Failed to delete poll. Please try again.';
+            }
+        });
+
         // Fetch and display poll data
         const fetchPollData = (pollId) => {
-            console.log("Attempting to fetch poll with ID:", pollId);
             const pollRef = ref(db, `polls/${pollId}`);
             
             onValue(pollRef, (snapshot) => {
                 const poll = snapshot.val();
-                console.log("Received snapshot value:", poll);
                 
                 if (poll) {
-                    poll.key = snapshot.key; // Add the key for voting
+                    poll.key = snapshot.key;
                     pollQuestionDisplay.textContent = poll.question;
+                    
+                    // Show or hide owner buttons based on creator ID
+                    const user = auth.currentUser;
+                    if (user && user.uid === poll.creatorUid) {
+                        ownerButtons.classList.remove('hidden');
+                    } else {
+                        ownerButtons.classList.add('hidden');
+                    }
+
                     renderPollOptions(poll);
                 } else {
                     pollQuestionDisplay.textContent = 'Poll not found.';
                     pollOptionsDisplay.innerHTML = '';
                     pollResultsDisplay.classList.add('hidden');
+                    ownerButtons.classList.add('hidden'); // Hide buttons if poll is gone
                 }
             }, {
-                onlyOnce: false // Listen for real-time changes
+                onlyOnce: false
             });
         };
 
@@ -334,9 +377,15 @@
                 const optionButton = document.createElement('button');
                 optionButton.textContent = option.text;
                 optionButton.className = 'vote-option button button-secondary w-full text-left';
-                optionButton.addEventListener('click', () => {
-                    vote(poll.key, index);
-                });
+                
+                if (poll.isEnded) {
+                    optionButton.disabled = true;
+                    optionButton.classList.add('bg-gray-200', 'cursor-not-allowed');
+                } else {
+                    optionButton.addEventListener('click', () => {
+                        vote(poll.key, index);
+                    });
+                }
                 pollOptionsDisplay.appendChild(optionButton);
 
                 // Result bar
@@ -354,8 +403,8 @@
                 resultsList.appendChild(resultBar);
             });
             
-            // Show results after an initial vote
-            if (totalVotes > 0) {
+            // Show results after an initial vote or if poll has ended
+            if (totalVotes > 0 || poll.isEnded) {
                 pollResultsDisplay.classList.remove('hidden');
             } else {
                 pollResultsDisplay.classList.add('hidden');
@@ -367,7 +416,6 @@
             const pollOptionVotesRef = ref(db, `polls/${pollId}/options/${optionIndex}/votes`);
             
             runTransaction(pollOptionVotesRef, (currentVotes) => {
-                // Atomically increment the vote count
                 return (currentVotes || 0) + 1;
             });
         };
