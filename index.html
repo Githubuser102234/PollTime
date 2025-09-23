@@ -178,12 +178,23 @@
                 const parts = path.split('/');
                 const urlPart = parts[parts.length - 1];
                 const lastHyphenIndex = urlPart.lastIndexOf('-');
-                const pollId = lastHyphenIndex !== -1 ? urlPart.substring(lastHyphenIndex + 1) : null;
+                
+                let pollId = null;
+                if (lastHyphenIndex !== -1) {
+                    pollId = urlPart.substring(lastHyphenIndex + 1);
+                }
+                
+                console.log("Extracted Poll ID:", pollId);
+
                 if (pollId) {
                     // Show poll view section
                     authCreateSection.classList.add('hidden');
                     pollViewSection.classList.remove('hidden');
                     fetchPollData(pollId);
+                } else {
+                    pollQuestionDisplay.textContent = 'Poll not found. Invalid URL.';
+                    pollOptionsDisplay.innerHTML = '';
+                    pollResultsDisplay.classList.add('hidden');
                 }
             } else {
                 // Show poll creation section
@@ -300,6 +311,9 @@
             
             onValue(pollRef, (snapshot) => {
                 const poll = snapshot.val();
+                console.log("Fetching poll data for ID:", pollId);
+                console.log("Snapshot value:", poll);
+                
                 if (poll) {
                     poll.key = snapshot.key; // Add the key for voting
                     pollQuestionDisplay.textContent = poll.question;
