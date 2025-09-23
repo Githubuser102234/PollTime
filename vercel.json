@@ -1,0 +1,8 @@
+{
+"rewrites": [
+{
+"source": "/poll/:match*",
+"destination": "/index.html"
+}
+]
+}
