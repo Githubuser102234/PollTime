@@ -203,10 +203,10 @@
 
     <!-- Firebase SDKs -->
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js";
-        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js";
-        import { getDatabase, ref, push, onValue, runTransaction, set, update, remove } from "https://www.gstatic.com/firebasejs/12.3.0/firebase-database.js";
-
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+        import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+        import { getDatabase, ref, push, onValue, runTransaction, set, update, remove } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-database.js";
+        
         const firebaseConfig = {
             apiKey: "AIzaSyD4Nvk8ufVAw_0EB2lZTdAkZKSWSnWbKtc",
             authDomain: "polltime-6ec9c.firebaseapp.com",
@@ -217,10 +217,12 @@
             measurementId: "G-V49J0KF4FZ"
         };
     
+        // Initialize Firebase
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getDatabase(app);
 
+        // UI elements
         const authCreateSection = document.getElementById('auth-create-section');
         const pollViewSection = document.getElementById('poll-view-section');
         const authStatus = document.getElementById('auth-status');
@@ -242,6 +244,7 @@
         const togglePollBtn = document.getElementById('toggle-poll-btn');
         const deletePollBtn = document.getElementById('delete-poll-btn');
         
+        // AI Modal elements
         const aiPromptModal = document.getElementById('ai-prompt-modal');
         const aiTopicInput = document.getElementById('ai-topic-input');
         const cancelAiBtn = document.getElementById('cancel-ai-btn');
@@ -251,6 +254,7 @@
 
         let currentPollId = null;
 
+        // Handle URL-based routing
         const handleRouting = () => {
             const path = window.location.pathname;
             if (path.startsWith('/poll/')) {
@@ -272,6 +276,7 @@
             }
         };
 
+        // Listen for auth state changes
         onAuthStateChanged(auth, (user) => {
             if (user) {
                 authStatus.textContent = `Signed in as ${user.displayName}. You can now create a poll.`;
@@ -289,6 +294,7 @@
             }
         });
 
+        // Event listeners
         googleSigninBtn.addEventListener('click', async () => {
             try {
                 const provider = new GoogleAuthProvider();
@@ -333,6 +339,7 @@
             optionsContainer.appendChild(optionGroup);
         });
         
+        // AI Poll Generation
         aiPollBtn.addEventListener('click', () => {
             aiPromptModal.style.display = 'flex';
             aiTopicInput.value = '';
@@ -350,6 +357,7 @@
                 return;
             }
             
+            // Show loading state
             generateText.classList.add('hidden');
             loadingSpinner.classList.remove('hidden');
             generateAiBtn.disabled = true;
@@ -391,11 +399,13 @@
 
                 document.getElementById('poll-question').value = pollData.question;
                 
+                // Remove all existing option fields except the first two
                 const options = document.querySelectorAll('.option-group');
                 for (let i = options.length - 1; i >= 2; i--) {
                     options[i].remove();
                 }
 
+                // Populate and add new options
                 document.querySelector('.poll-option').value = pollData.options[0] || '';
                 document.querySelectorAll('.poll-option')[1].value = pollData.options[1] || '';
 
@@ -414,6 +424,7 @@
                 console.error("AI Generation error:", error);
                 errorMessage.textContent = 'Failed to generate poll with AI. Please try a different topic or try again.';
             } finally {
+                // Hide loading state
                 generateText.classList.remove('hidden');
                 loadingSpinner.classList.add('hidden');
                 generateAiBtn.disabled = false;
@@ -467,6 +478,7 @@
             }
         });
 
+        // Event listeners for owner-only buttons
         togglePollBtn.addEventListener('click', async () => {
             if (!currentPollId) return;
             const pollRef = ref(db, `polls/${currentPollId}`);
@@ -494,6 +506,7 @@
             }
         });
 
+        // Fetch and display poll data
         const fetchPollData = (pollId) => {
             const pollRef = ref(db, `polls/${pollId}`);
             
