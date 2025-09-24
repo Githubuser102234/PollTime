@@ -64,6 +64,41 @@
         .delete-btn:hover {
             background-color: #ef4444;
         }
+
+        /* Modal specific styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
@@ -79,7 +114,10 @@
             </div>
 
             <form id="poll-form" class="mt-8 hidden space-y-4">
-                <h2 class="text-2xl font-semibold text-gray-800">Your Question</h2>
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+                    <h2 class="text-2xl font-semibold text-gray-800">Your Question</h2>
+                    <button type="button" id="ai-poll-btn" class="button button-secondary text-sm">Create a poll with AI</button>
+                </div>
                 <input id="poll-question" type="text" placeholder="e.g., What's your favorite color?" class="form-input" required>
                 
                 <h2 class="text-2xl font-semibold text-gray-800">Options</h2>
@@ -129,8 +167,24 @@
                 <a href="/" class="text-indigo-600 hover:underline">Create your own poll</a>
             </div>
         </div>
-
+        
         <p id="error-message" class="text-center text-red-500 mt-4"></p>
+    </div>
+
+    <!-- AI Prompt Modal -->
+    <div id="ai-modal" class="modal hidden">
+        <div class="modal-content text-center space-y-6">
+            <h3 class="text-2xl font-semibold text-gray-800">What topic should the poll be about?</h3>
+            <input type="text" id="ai-topic-input" class="form-input" placeholder="e.g., Best pizza topping" required>
+            <div class="flex justify-center space-x-4">
+                <button id="ai-submit-btn" class="button button-primary">Generate Poll</button>
+                <button id="ai-cancel-btn" class="button button-secondary">Cancel</button>
+            </div>
+            <div id="ai-loading" class="hidden mt-4 flex justify-center items-center">
+                <div class="loader"></div>
+                <span class="ml-4 text-gray-600">Generating poll...</span>
+            </div>
+        </div>
     </div>
 
     <!-- Firebase SDKs -->
@@ -166,6 +220,7 @@
         const googleSigninBtn = document.getElementById('google-signin');
         const signoutBtn = document.getElementById('signout');
         const pollForm = document.getElementById('poll-form');
+        const aiPollBtn = document.getElementById('ai-poll-btn');
         const optionsContainer = document.getElementById('options-container');
         const addOptionBtn = document.getElementById('add-option');
         const pollLinkSection = document.getElementById('poll-link-section');
@@ -179,6 +234,11 @@
         const ownerButtons = document.getElementById('owner-buttons');
         const togglePollBtn = document.getElementById('toggle-poll-btn');
         const deletePollBtn = document.getElementById('delete-poll-btn');
+        const aiModal = document.getElementById('ai-modal');
+        const aiTopicInput = document.getElementById('ai-topic-input');
+        const aiSubmitBtn = document.getElementById('ai-submit-btn');
+        const aiCancelBtn = document.getElementById('ai-cancel-btn');
+        const aiLoading = document.getElementById('ai-loading');
         
         // State for the current poll ID
         let currentPollId = null;
@@ -241,6 +301,125 @@
             } catch (error) {
                 console.error("Sign out error:", error);
                 errorMessage.textContent = 'Failed to sign out. Please try again.';
+            }
+        });
+        
+        aiPollBtn.addEventListener('click', () => {
+            aiModal.classList.remove('hidden');
+            errorMessage.textContent = '';
+        });
+
+        aiCancelBtn.addEventListener('click', () => {
+            aiModal.classList.add('hidden');
+            aiTopicInput.value = '';
+            aiLoading.classList.add('hidden');
+        });
+
+        aiSubmitBtn.addEventListener('click', async () => {
+            const topic = aiTopicInput.value.trim();
+            if (!topic) {
+                errorMessage.textContent = 'Please enter a topic.';
+                return;
+            }
+
+            aiTopicInput.disabled = true;
+            aiSubmitBtn.disabled = true;
+            aiCancelBtn.disabled = true;
+            aiLoading.classList.remove('hidden');
+            errorMessage.textContent = '';
+            
+            try {
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+                const systemPrompt = `
+                    You are a poll-generating AI. Your task is to create a poll based on a user's topic.
+                    The poll must have a clear question and at least three unique options.
+                    The response must be in JSON format only. Do not include any text before or after the JSON.
+                    The JSON object should have two keys: 'question' (a string) and 'options' (an array of strings).
+                    Example output:
+                    {
+                      "question": "What's the best way to travel?",
+                      "options": [
+                        "By car",
+                        "By train",
+                        "By plane",
+                        "By boat"
+                      ]
+                    }
+                    The 'question' must be a question. The 'options' array must contain at least 3 options.
+                    `;
+
+                const payload = {
+                    contents: [{ parts: [{ text: topic }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] },
+                    generationConfig: {
+                      responseMimeType: "application/json"
+                    }
+                };
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                
+                if (!jsonText) {
+                    throw new Error("Invalid response from AI model.");
+                }
+
+                const pollData = JSON.parse(jsonText);
+                
+                if (!pollData.question || !Array.isArray(pollData.options) || pollData.options.length < 2) {
+                    throw new Error("AI response was not a valid poll.");
+                }
+
+                document.getElementById('poll-question').value = pollData.question;
+                
+                optionsContainer.innerHTML = '';
+                pollData.options.forEach((optionText, index) => {
+                    const optionGroup = document.createElement('div');
+                    optionGroup.className = 'option-group';
+        
+                    const newOption = document.createElement('input');
+                    newOption.type = 'text';
+                    newOption.placeholder = `Option ${index + 1}`;
+                    newOption.className = 'form-input poll-option';
+                    newOption.required = true;
+                    newOption.value = optionText;
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.textContent = 'x';
+                    deleteBtn.type = 'button';
+                    deleteBtn.className = 'delete-btn';
+                    deleteBtn.title = 'Remove this option';
+                    deleteBtn.onclick = () => {
+                        optionGroup.remove();
+                    };
+        
+                    optionGroup.appendChild(newOption);
+                    optionGroup.appendChild(deleteBtn);
+                    optionsContainer.appendChild(optionGroup);
+                });
+
+                aiModal.classList.add('hidden');
+                aiTopicInput.value = '';
+                errorMessage.textContent = '';
+
+            } catch (error) {
+                console.error("AI poll generation failed:", error);
+                errorMessage.textContent = `Failed to generate poll. Error: ${error.message}`;
+            } finally {
+                aiTopicInput.disabled = false;
+                aiSubmitBtn.disabled = false;
+                aiCancelBtn.disabled = false;
+                aiLoading.classList.add('hidden');
             }
         });
 
@@ -461,3 +640,4 @@
     </script>
 </body>
 </html>
+
