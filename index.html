@@ -364,7 +364,7 @@
 
             const prompt = `Generate a poll question and at least 4 options about the topic: "${topic}". Format the output as a JSON object with two keys: "question" (string) and "options" (array of strings). Do not include any other text or formatting outside of the JSON object.`;
             
-            const apiKey = "";
+            const apiKey = ""; // This is automatically handled by the environment.
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
             const payload = {
@@ -390,6 +390,12 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
+                
+                // Check if the network request was successful before parsing JSON
+                if (!response.ok) {
+                    throw new Error(`API call failed with status: ${response.status} ${response.statusText}`);
+                }
+                
                 const result = await response.json();
                 const json = result?.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (!json) {
@@ -422,7 +428,7 @@
                 errorMessage.textContent = '';
             } catch (error) {
                 console.error("AI Generation error:", error);
-                errorMessage.textContent = 'Failed to generate poll with AI. Please try a different topic or try again.';
+                errorMessage.textContent = `Failed to generate poll. Reason: ${error.message}. Please try again.`;
             } finally {
                 // Hide loading state
                 generateText.classList.remove('hidden');
